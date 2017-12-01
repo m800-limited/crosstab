@@ -723,53 +723,58 @@
             var master = getMaster();
             // ping master
             if (master && master.id !== myTab.id) {
-                var timeout;
-                var start;
-
-                crosstab.util.events.once('PONG', function () {
-                    if (!setupComplete) {
-                        clearTimeout(timeout);
-                        // set supported to true / frozen to false
-                        setLocalStorageItem(
-                            util.keys.SUPPORTED_KEY,
-                            true);
-                        setLocalStorageItem(
-                            util.keys.FROZEN_TAB_ENVIRONMENT,
-                            false);
-                        util.events.emit('setupComplete');
-                    }
-                });
-
-                start = util.now();
-
-                // There is a nested timeout here. We'll give it 100ms
-                // timeout, with iters "yields" to the event loop. So at least
-                // iters number of blocks of javascript will be able to run
-                // covering at least 100ms
-                var recursiveTimeout = function (iters) {
-                    var diff = util.now() - start;
-
-                    if (!setupComplete) {
-                        if (iters <= 0 && diff > PING_TIMEOUT) {
-                            frozenTabEnvironmentDetected();
-                            util.events.emit('setupComplete');
-                        } else {
-                            timeout = setTimeout(function () {
-                                recursiveTimeout(iters - 1);
-                            }, 5);
-                        }
-                    }
-                };
-
-                var iterations = 5;
-                timeout = setTimeout(function () {
-                    recursiveTimeout(5);
-                }, PING_TIMEOUT - 5 * iterations);
-                crosstab.broadcastMaster('PING');
+                // frozenTabCheck();
+                util.events.emit('setupComplete');
             } else if (master && master.id === myTab.id) {
                 util.events.emit('setupComplete');
             }
         }
+    }
+
+    function frozenTabCheck() {
+        var timeout;
+        var start;
+
+        crosstab.util.events.once('PONG', function () {
+            if (!setupComplete) {
+                clearTimeout(timeout);
+                // set supported to true / frozen to false
+                setLocalStorageItem(
+                    util.keys.SUPPORTED_KEY,
+                    true);
+                setLocalStorageItem(
+                    util.keys.FROZEN_TAB_ENVIRONMENT,
+                    false);
+                util.events.emit('setupComplete');
+            }
+        });
+
+        start = util.now();
+
+        // There is a nested timeout here. We'll give it 100ms
+        // timeout, with iters "yields" to the event loop. So at least
+        // iters number of blocks of javascript will be able to run
+        // covering at least 100ms
+        var recursiveTimeout = function (iters) {
+            var diff = util.now() - start;
+
+            if (!setupComplete) {
+                if (iters <= 0 && diff > PING_TIMEOUT) {
+                    frozenTabEnvironmentDetected();
+                    util.events.emit('setupComplete');
+                } else {
+                    timeout = setTimeout(function () {
+                        recursiveTimeout(iters - 1);
+                    }, 5);
+                }
+            }
+        };
+
+        var iterations = 5;
+        timeout = setTimeout(function () {
+            recursiveTimeout(5);
+        }, PING_TIMEOUT - 5 * iterations);
+        crosstab.broadcastMaster('PING');
     }
 
     function keepaliveLoop() {
@@ -789,7 +794,8 @@
         // swap `beforeunload` to `unload` after DOM is loaded
         window.addEventListener('DOMContentLoaded', swapUnloadEvents, false);
 
-        util.events.on('PING', function (message) {
+        // disabled frozen tab checking
+        /*util.events.on('PING', function (message) {
             // only handle direct messages
             if (!message.destination || message.destination !== crosstab.id) {
                 return;
@@ -798,7 +804,7 @@
             if (util.now() - message.timestamp < PING_TIMEOUT) {
                 crosstab.broadcast('PONG', null, message.origin);
             }
-        });
+        });*/
 
         crosstab.keepAliveInterval = setInterval(keepaliveLoop, TAB_KEEPALIVE);
         keepaliveLoop();
