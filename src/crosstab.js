@@ -436,13 +436,15 @@
 
     function onBeforeUnload() {
         unload();
-        // remove 'unload' event listener if 'beforeunload' event is handled.
+        // remove 'unload' event listener if 'beforeunload' event is triggered.
+        // This is to avoid invoking the unload function twice.
         window.removeEventListener('unload', onUnload, false);
     }
 
     function onUnload() {
         unload();
-        // remove 'beforeunload' event listener if 'unload' event is handled.
+        // remove 'beforeunload' event listener if 'unload' event is triggered.
+        // This is to avoid invoking the unload function twice.
         window.removeEventListener('beforeunload', onBeforeUnload, false);
     }
 
@@ -732,6 +734,16 @@
             var master = getMaster();
             // ping master
             if (master && master.id !== myTab.id) {
+                /*
+                Disabled frozen tab checking, this is because there are many issues that normal new
+                passive tabs are treated unexpectedly as frozen tab; plus while the main purpose of
+                the frozen tab mechanism is to fail fast for cases like mobile browser where tabs
+                cannot be communicated via localStorage, mobile browsers are actually detected as
+                not supported in the first place.
+                However, this frozen tab checking may be re-enabled if there's case needed to detect
+                actual frozen tabs, but a recover mechanism should be added(like 10mins unfrozen)
+                so that the mechanism can be more robust.
+                */
                 // frozenTabCheck();
                 util.events.emit('setupComplete');
             } else if (master && master.id === myTab.id) {
@@ -799,13 +811,16 @@
         // ---- Setup Storage Listener
         window.addEventListener('storage', onStorageEvent, false);
         // start with the `beforeunload` event due to IE11
+        // In Safari, the unload handler cannot be invoked when a tab closed, if the 'beforeunload'
+        // event is replaced by 'unload' event, so we keep both events.
         window.addEventListener('beforeunload', onBeforeUnload, false);
         window.addEventListener('unload', onUnload, false);
 
         window.addEventListener('DOMContentLoaded', onDOMLoaded, false);
 
-        // disabled frozen tab checking
-        /*util.events.on('PING', function (message) {
+        // Disabled frozen tab checking.
+        /*
+        util.events.on('PING', function (message) {
             // only handle direct messages
             if (!message.destination || message.destination !== crosstab.id) {
                 return;
@@ -814,7 +829,8 @@
             if (util.now() - message.timestamp < PING_TIMEOUT) {
                 crosstab.broadcast('PONG', null, message.origin);
             }
-        });*/
+        });
+        */
 
         crosstab.keepAliveInterval = setInterval(keepaliveLoop, TAB_KEEPALIVE);
         keepaliveLoop();
