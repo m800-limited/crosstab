@@ -52,6 +52,18 @@
         setItemAllowed = false;
     }
 
+    /*
+        Disabled frozen tab checking, this is because there are many issues that normal new
+        passive tabs are treated unexpectedly as frozen tab; plus while the main purpose of
+        the frozen tab mechanism is to fail fast for cases like mobile browser where tabs
+        cannot be communicated via localStorage, mobile browsers are actually detected as
+        not supported in the first place.
+        However, this frozen tab checking may be re-enabled if there's case needed to detect
+        actual frozen tabs, but a recover mechanism should be added(like 10mins unfrozen)
+        so that the mechanism can be more robust.
+    */
+    var enableFrozenTabCheck = false;
+
     // Other reasons
     var frozenTabEnvironment = false;
 
@@ -734,17 +746,10 @@
             var master = getMaster();
             // ping master
             if (master && master.id !== myTab.id) {
-                /*
-                Disabled frozen tab checking, this is because there are many issues that normal new
-                passive tabs are treated unexpectedly as frozen tab; plus while the main purpose of
-                the frozen tab mechanism is to fail fast for cases like mobile browser where tabs
-                cannot be communicated via localStorage, mobile browsers are actually detected as
-                not supported in the first place.
-                However, this frozen tab checking may be re-enabled if there's case needed to detect
-                actual frozen tabs, but a recover mechanism should be added(like 10mins unfrozen)
-                so that the mechanism can be more robust.
-                */
-                // frozenTabCheck();
+                if (enableFrozenTabCheck) {
+                    frozenTabCheck();
+                }
+
                 util.events.emit('setupComplete');
             } else if (master && master.id === myTab.id) {
                 util.events.emit('setupComplete');
@@ -818,19 +823,18 @@
 
         window.addEventListener('DOMContentLoaded', onDOMLoaded, false);
 
-        // Disabled frozen tab checking.
-        /*
-        util.events.on('PING', function (message) {
-            // only handle direct messages
-            if (!message.destination || message.destination !== crosstab.id) {
-                return;
-            }
+        if (enableFrozenTabCheck) {
+            util.events.on('PING', function (message) {
+                // only handle direct messages
+                if (!message.destination || message.destination !== crosstab.id) {
+                    return;
+                }
 
-            if (util.now() - message.timestamp < PING_TIMEOUT) {
-                crosstab.broadcast('PONG', null, message.origin);
-            }
-        });
-        */
+                if (util.now() - message.timestamp < PING_TIMEOUT) {
+                    crosstab.broadcast('PONG', null, message.origin);
+                }
+            });
+        }
 
         crosstab.keepAliveInterval = setInterval(keepaliveLoop, TAB_KEEPALIVE);
         keepaliveLoop();
