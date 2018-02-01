@@ -434,15 +434,24 @@
 
     }
 
+    function onBeforeUnload() {
+        unload();
+        // remove 'unload' event listener if 'beforeunload' event is handled.
+        window.removeEventListener('unload', onUnload, false);
+    }
+
+    function onUnload() {
+        unload();
+        // remove 'beforeunload' event listener if 'unload' event is handled.
+        window.removeEventListener('beforeunload', onBeforeUnload, false);
+    }
+
     function restoreLoop() {
         crosstab.stopKeepalive = false;
         keepaliveLoop();
     }
 
-    function swapUnloadEvents() {
-        // `beforeunload` replaced by `unload` (IE11 will be smart now)
-        window.removeEventListener('beforeunload', unload, false);
-        window.addEventListener('unload', unload, false);
+    function onDOMLoaded() {
         restoreLoop();
     }
 
@@ -790,9 +799,10 @@
         // ---- Setup Storage Listener
         window.addEventListener('storage', onStorageEvent, false);
         // start with the `beforeunload` event due to IE11
-        window.addEventListener('beforeunload', unload, false);
-        // swap `beforeunload` to `unload` after DOM is loaded
-        window.addEventListener('DOMContentLoaded', swapUnloadEvents, false);
+        window.addEventListener('beforeunload', onBeforeUnload, false);
+        window.addEventListener('unload', onUnload, false);
+
+        window.addEventListener('DOMContentLoaded', onDOMLoaded, false);
 
         // disabled frozen tab checking
         /*util.events.on('PING', function (message) {
