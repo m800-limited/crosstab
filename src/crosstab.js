@@ -52,6 +52,18 @@
         setItemAllowed = false;
     }
 
+    /*
+        Disabled frozen tab checking, this is because there are many issues that normal new
+        passive tabs are treated unexpectedly as frozen tab; plus while the main purpose of
+        the frozen tab mechanism is to fail fast for cases like mobile browser where tabs
+        cannot be communicated via localStorage, mobile browsers are actually detected as
+        not supported in the first place.
+        However, this frozen tab checking may be re-enabled if there's case needed to detect
+        actual frozen tabs, but a recover mechanism should be added(like 10mins unfrozen)
+        so that the mechanism can be more robust.
+    */
+    var enableFrozenTabCheck = false;
+
     // Other reasons
     var frozenTabEnvironment = false;
 
@@ -434,15 +446,26 @@
 
     }
 
+    function onBeforeUnload() {
+        unload();
+        // remove 'unload' event listener if 'beforeunload' event is triggered.
+        // This is to avoid invoking the unload function twice.
+        window.removeEventListener('unload', onUnload, false);
+    }
+
+    function onUnload() {
+        unload();
+        // remove 'beforeunload' event listener if 'unload' event is triggered.
+        // This is to avoid invoking the unload function twice.
+        window.removeEventListener('beforeunload', onBeforeUnload, false);
+    }
+
     function restoreLoop() {
         crosstab.stopKeepalive = false;
         keepaliveLoop();
     }
 
-    function swapUnloadEvents() {
-        // `beforeunload` replaced by `unload` (IE11 will be smart now)
-        window.removeEventListener('beforeunload', unload, false);
-        window.addEventListener('unload', unload, false);
+    function onDOMLoaded() {
         restoreLoop();
     }
 
@@ -723,53 +746,61 @@
             var master = getMaster();
             // ping master
             if (master && master.id !== myTab.id) {
-                var timeout;
-                var start;
+                if (enableFrozenTabCheck) {
+                    frozenTabCheck();
+                }
 
-                crosstab.util.events.once('PONG', function () {
-                    if (!setupComplete) {
-                        clearTimeout(timeout);
-                        // set supported to true / frozen to false
-                        setLocalStorageItem(
-                            util.keys.SUPPORTED_KEY,
-                            true);
-                        setLocalStorageItem(
-                            util.keys.FROZEN_TAB_ENVIRONMENT,
-                            false);
-                        util.events.emit('setupComplete');
-                    }
-                });
-
-                start = util.now();
-
-                // There is a nested timeout here. We'll give it 100ms
-                // timeout, with iters "yields" to the event loop. So at least
-                // iters number of blocks of javascript will be able to run
-                // covering at least 100ms
-                var recursiveTimeout = function (iters) {
-                    var diff = util.now() - start;
-
-                    if (!setupComplete) {
-                        if (iters <= 0 && diff > PING_TIMEOUT) {
-                            frozenTabEnvironmentDetected();
-                            util.events.emit('setupComplete');
-                        } else {
-                            timeout = setTimeout(function () {
-                                recursiveTimeout(iters - 1);
-                            }, 5);
-                        }
-                    }
-                };
-
-                var iterations = 5;
-                timeout = setTimeout(function () {
-                    recursiveTimeout(5);
-                }, PING_TIMEOUT - 5 * iterations);
-                crosstab.broadcastMaster('PING');
+                util.events.emit('setupComplete');
             } else if (master && master.id === myTab.id) {
                 util.events.emit('setupComplete');
             }
         }
+    }
+
+    function frozenTabCheck() {
+        var timeout;
+        var start;
+
+        crosstab.util.events.once('PONG', function () {
+            if (!setupComplete) {
+                clearTimeout(timeout);
+                // set supported to true / frozen to false
+                setLocalStorageItem(
+                    util.keys.SUPPORTED_KEY,
+                    true);
+                setLocalStorageItem(
+                    util.keys.FROZEN_TAB_ENVIRONMENT,
+                    false);
+                util.events.emit('setupComplete');
+            }
+        });
+
+        start = util.now();
+
+        // There is a nested timeout here. We'll give it 100ms
+        // timeout, with iters "yields" to the event loop. So at least
+        // iters number of blocks of javascript will be able to run
+        // covering at least 100ms
+        var recursiveTimeout = function (iters) {
+            var diff = util.now() - start;
+
+            if (!setupComplete) {
+                if (iters <= 0 && diff > PING_TIMEOUT) {
+                    frozenTabEnvironmentDetected();
+                    util.events.emit('setupComplete');
+                } else {
+                    timeout = setTimeout(function () {
+                        recursiveTimeout(iters - 1);
+                    }, 5);
+                }
+            }
+        };
+
+        var iterations = 5;
+        timeout = setTimeout(function () {
+            recursiveTimeout(5);
+        }, PING_TIMEOUT - 5 * iterations);
+        crosstab.broadcastMaster('PING');
     }
 
     function keepaliveLoop() {
@@ -785,20 +816,25 @@
         // ---- Setup Storage Listener
         window.addEventListener('storage', onStorageEvent, false);
         // start with the `beforeunload` event due to IE11
-        window.addEventListener('beforeunload', unload, false);
-        // swap `beforeunload` to `unload` after DOM is loaded
-        window.addEventListener('DOMContentLoaded', swapUnloadEvents, false);
+        // In Safari, the unload handler cannot be invoked when a tab closed, if the 'beforeunload'
+        // event is replaced by 'unload' event, so we keep both events.
+        window.addEventListener('beforeunload', onBeforeUnload, false);
+        window.addEventListener('unload', onUnload, false);
 
-        util.events.on('PING', function (message) {
-            // only handle direct messages
-            if (!message.destination || message.destination !== crosstab.id) {
-                return;
-            }
+        window.addEventListener('DOMContentLoaded', onDOMLoaded, false);
 
-            if (util.now() - message.timestamp < PING_TIMEOUT) {
-                crosstab.broadcast('PONG', null, message.origin);
-            }
-        });
+        if (enableFrozenTabCheck) {
+            util.events.on('PING', function (message) {
+                // only handle direct messages
+                if (!message.destination || message.destination !== crosstab.id) {
+                    return;
+                }
+
+                if (util.now() - message.timestamp < PING_TIMEOUT) {
+                    crosstab.broadcast('PONG', null, message.origin);
+                }
+            });
+        }
 
         crosstab.keepAliveInterval = setInterval(keepaliveLoop, TAB_KEEPALIVE);
         keepaliveLoop();
