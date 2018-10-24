@@ -429,6 +429,12 @@
     }
 
     function unload() {
+        // Let it go, cease fighting when dying.
+        Object.values(util.eventTypes)
+            // except for `tabClosed` event, which triggers master tab election
+            .filter((event) => event !== util.eventTypes.tabClosed)
+            .forEach((event) => eventHandler.removeListener(event));
+
         crosstab.stopKeepalive = true;
         var numTabs = 0;
         util.forEach(util.tabs, function (tab, key) {
