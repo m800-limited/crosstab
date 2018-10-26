@@ -434,7 +434,7 @@
             // except for `tabClosed` event, which triggers master tab election
             if (util.eventTypes[key] === util.eventTypes.tabClosed) continue;
 
-            eventHandler.removeListener(util.eventTypes[key]);
+            eventHandler.removeAllListeners(util.eventTypes[key]);
         }
 
         crosstab.stopKeepalive = true;
